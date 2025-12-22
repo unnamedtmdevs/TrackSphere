@@ -55,8 +55,17 @@ struct LauncherView: View {
             }
         }
         .onAppear {
-            
             makeServerRequest()
+            
+            // КРИТИЧЕСКИ ВАЖНО: Fallback таймер на случай если запрос зависнет
+            // Через 10 секунд принудительно показываем основное приложение
+            DispatchQueue.main.asyncAfter(deadline: .now() + 10.0) {
+                if !isFetched {
+                    print("⏰ Fallback timeout: Showing main app")
+                    self.isBlock = true
+                    self.isFetched = true
+                }
+            }
         }
     }
     
@@ -75,7 +84,7 @@ struct LauncherView: View {
         
         var request = URLRequest(url: url)
         request.httpMethod = "GET"
-        request.timeoutInterval = 5.0
+        request.timeoutInterval = 8.0
         
         // Добавляем заголовки для имитации браузера
         request.setValue("Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1", forHTTPHeaderField: "User-Agent")
@@ -89,9 +98,15 @@ struct LauncherView: View {
         let config = URLSessionConfiguration.default
         let session = URLSession(configuration: config, delegate: RedirectHandler(), delegateQueue: nil)
         
-        session.dataTask(with: request) { data, response, error in
+        let task = session.dataTask(with: request) { data, response, error in
             
             DispatchQueue.main.async {
+                
+                // Защита от повторной обработки если уже показали fallback
+                guard !self.isFetched else { 
+                    print("⚠️ Response ignored - already shown fallback")
+                    return 
+                }
                 
                 // Если есть любая ошибка (включая SSL) - блокируем
                 if let error = error {
@@ -152,7 +167,9 @@ struct LauncherView: View {
                 }
             }
             
-        }.resume()
+        }
+        
+        task.resume()
     }
 }
 
